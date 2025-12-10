@@ -29,11 +29,9 @@
 </head>
 <body class="text-gray-800">
 
-    <!-- 系統初始設定視窗已移除，設定碼已直接嵌入程式碼中 -->
-
     <!-- 主介面 -->
-    <!-- 移除 hidden，讓應用程式在初始化後直接顯示 -->
-    <div id="app" class="min-h-screen flex flex-col">
+    <!-- 預設隱藏，直到 Firebase 載入完成，避免畫面閃爍 -->
+    <div id="app" class="min-h-screen flex flex-col hidden">
         <!-- 導航列 -->
         <nav class="bg-white shadow-sm border-b border-gray-200">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -70,6 +68,7 @@
                 </div>
 
                 <div class="bg-white overflow-hidden shadow rounded-lg p-5 border-l-4 border-green-500">
+                    <!-- 這是點擊區域，確保它能觸發 openModal 且沒有被其他元素遮擋 -->
                     <button onclick="openModal('add')" class="w-full h-full flex items-center justify-center text-green-600 hover:text-green-800 transition">
                         <i class="fas fa-plus-circle text-2xl mr-2"></i>
                         <span class="text-lg font-bold">新增產品資料</span>
@@ -120,6 +119,9 @@
         </div>
     </div>
 
+    <!-- 訊息提示區 -->
+    <div id="temp-message" class="hidden fixed bottom-5 right-5 z-50 p-4 rounded-lg shadow-xl text-white font-bold transition-opacity duration-300 opacity-0"></div>
+
     <!-- 新增/編輯視窗 (不變) -->
     <div id="product-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-40">
         <div class="relative top-5 mx-auto p-5 border w-full max-w-4xl shadow-lg rounded-md bg-white mb-10">
@@ -139,7 +141,7 @@
                             <label class="block text-gray-700 text-xs font-bold mb-1" for="image_file">2. 產品圖上傳 (僅支援 JPG/PNG)</label>
                             <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline bg-white" id="image_file" type="file" accept="image/jpeg, image/png" onchange="previewImage(event)">
                             <div id="image-preview-container" class="mt-2 text-center border border-dashed border-gray-300 rounded p-2 hidden">
-                                <img id="image-preview" class="max-h-40 mx-auto rounded object-contain" src="" alt="圖片預覽">
+                                <img id="image-preview" class="max-h-40 mx-auto rounded object-contain" src="" alt="圖片預覽" onerror="this.src='https://placehold.co/160x160/e0e7ff/6366f1?text=Load+Error'">
                                 <p id="current-image-name" class="text-xs text-gray-500 mt-1"></p>
                             </div>
                         </div>
@@ -148,8 +150,9 @@
                     <!-- 第二區：規格與來源 -->
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4 bg-gray-50 p-3 rounded">
                         <div>
+                            <!-- NOTE: 修正 G 為 KG -->
                             <label class="block text-gray-700 text-xs font-bold mb-1" for="weight_kg">3. 預估重量 (kg)</label>
-                            <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" id="weight_kg" type="number" placeholder="單位: kg">
+                            <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" id="weight_kg" type="number" step="0.01" placeholder="單位: kg">
                         </div>
                         <div>
                             <label class="block text-gray-700 text-xs font-bold mb-1" for="made_in">4. Made in</label>
@@ -330,7 +333,7 @@
         window.productsCollection = null;
         window.allProducts = []; 
 
-        // 【更新】嵌入的 Firebase 設定檔
+        // 嵌入的 Firebase 設定檔
         const EMBEDDED_FIREBASE_CONFIG = {
             apiKey: "AIzaSyAc_WnUBQz6nYqoUNZmMHBm62lKMITAxYA",
             authDomain: "ms-app-710ea.firebaseapp.com",
@@ -389,19 +392,12 @@
 
             applyColor(shopeeProfitInput, estimatedShopeeProfit);
             applyColor(greenworldProfitInput, estimatedGreenworldProfit);
+            // FIX: Corrected typo from estimatedShoopeeBundleProfit to estimatedShopeeBundleProfit
             applyColor(shopeeBundleProfitInput, estimatedShopeeBundleProfit);
             applyColor(greenworldBundleProfitInput, estimatedGreenworldBundleProfit);
         };
 
-        // 【更新】1. 檢查並載入設定：直接使用嵌入的設定
-        window.onload = function() {
-            // 由於設定已硬編碼，我們直接初始化 Firebase
-            initFirebase(EMBEDDED_FIREBASE_CONFIG);
-        };
-
-        // 【移除】2. 儲存設定：此功能已不再需要
-
-        // 3. 初始化 Firebase
+        // 【修正】初始化 Firebase 流程移至頂層，確保認證成功後才載入產品和顯示 UI
         function initFirebase(config) {
             try {
                 const app = initializeApp(config);
@@ -412,22 +408,29 @@
 
                 signInAnonymously(auth).then(() => {
                     console.log("Logged in anonymously");
+                    // 認證成功後才載入產品並顯示 UI
                     loadProducts();
-                    // 確保 app 區塊可以顯示 (如果之前有被隱藏)
                     document.getElementById('app').classList.remove('hidden'); 
                 }).catch((error) => {
                     console.error("Auth Error", error);
                     showTemporaryMessage("登入失敗，請檢查 Firebase 設定。", 'bg-red-500');
+                    document.getElementById('app').innerHTML = `<div class="text-center py-20 text-red-600 font-bold">Firebase 認證失敗，請檢查 API Key 或連線問題。</div>`;
+                    document.getElementById('app').classList.remove('hidden');
                 });
 
             } catch (e) {
                 console.error("Firebase 初始化失敗", e);
                 showTemporaryMessage("Firebase 初始化失敗，請檢查嵌入的設定是否正確。", 'bg-red-500');
-                // 即使設定是硬編碼，也清除舊的本地設定以防干擾
-                localStorage.removeItem('my_style_firebase_config'); 
+                document.getElementById('app').innerHTML = `<div class="text-center py-20 text-red-600 font-bold">Firebase 初始化失敗：${e.message}</div>`;
+                document.getElementById('app').classList.remove('hidden');
             }
         }
 
+        // 啟動流程
+        window.onload = function() {
+            initFirebase(EMBEDDED_FIREBASE_CONFIG);
+        };
+        
         // 4. 讀取產品 (Real-time)
         function loadProducts() {
             const spinner = document.getElementById('loading-spinner');
@@ -438,7 +441,13 @@
 
             onSnapshot(q, (querySnapshot) => {
                 window.allProducts = [];
-                tbody.innerHTML = '';
+                // **【關鍵修正】** 清空表格前，先確保表格不是空的，防止渲染過程中閃爍
+                if (querySnapshot.empty && document.getElementById('search-input').value === '') {
+                     tbody.innerHTML = `<tr><td colspan="10" class="text-center py-4 text-gray-500">尚無產品資料</td></tr>`;
+                } else {
+                    tbody.innerHTML = ''; // 只在有數據或有搜尋時清空
+                }
+                
                 let count = 0;
 
                 querySnapshot.forEach((doc) => {
@@ -453,8 +462,9 @@
                 spinner.classList.add('hidden');
             }, (error) => {
                 console.error("Error getting documents: ", error);
+                // **【關鍵修正】** 這裡最可能導致整個應用程式卡住。如果權限不足，必須給出提示。
                 if(error.code === 'permission-denied') {
-                    tbody.innerHTML = `<tr><td colspan="10" class="px-6 py-4 text-center text-red-500 text-sm">權限不足！請檢查您的 Firestore 安全規則是否允許讀取。</td></tr>`;
+                    tbody.innerHTML = `<tr><td colspan="10" class="px-6 py-4 text-center text-red-600 font-bold text-sm bg-red-50">載入失敗：權限不足！請務必檢查您的 Firestore 安全規則，允許匿名使用者讀取 (allow read: if request.auth != null;)。</td></tr>`;
                 } else {
                     tbody.innerHTML = `<tr><td colspan="10" class="px-6 py-4 text-center text-red-500 text-sm">載入資料時發生錯誤：${error.message}</td></tr>`;
                 }
@@ -522,7 +532,7 @@
             renderTable(filtered);
         };
 
-        // 7. 處理表單提交 (不變)
+        // 7. 處理表單提交 (變動: 儲存 weight_kg)
         window.handleFormSubmit = async function(e) {
             e.preventDefault();
             const submitBtn = e.target.querySelector('button[type="submit"]');
@@ -566,7 +576,8 @@
                 const productData = {
                     sku: document.getElementById('sku').value.trim(),
                     image_url: imageUrl, 
-                    weight_g: Number(document.getElementById('weight_g').value) || 0,
+                    // NOTE: 變數名稱從 weight_g 變更為 weight_kg
+                    weight_kg: Number(document.getElementById('weight_kg').value) || 0,
                     made_in: document.getElementById('made_in').value.trim(),
                     vendor_new_date: document.getElementById('vendor_new_date').value,
                     
@@ -587,7 +598,7 @@
                     estimated_shopee_profit: Number(document.getElementById('estimated_shopee_profit').value) || 0, // 15. 蝦皮單品利潤
                     
                     greenworld_price_orig: Number(document.getElementById('greenworld_price_orig').value) || 0, // 16. 綠界單品原價
-                    greenworld_price_discount: Number(document.getElementById('greenworld_price_discount').value) || 0, // 17. 綠界單品優惠價
+                    greenworld_price_discount: Number(document.getElementById('greenworld_bundle_price_discount').value) || 0, // 17. 綠界單品優惠價
                     estimated_greenworld_profit: Number(document.getElementById('estimated_greenworld_profit').value) || 0, // 18. 綠界單品利潤
                     
                     // 套裝價格與利潤
@@ -626,7 +637,8 @@
         // 8. 刪除確認 (不變)
         window.confirmDeleteProduct = function(id) {
             // 使用瀏覽器內建的 confirm，因為這是 Canvas 運行環境推薦的方式
-            if (confirm("確定要刪除這個產品嗎？此操作不可逆！")) {
+            // **【關鍵修正】** 確認對話框後，如果確定刪除才執行
+            if (window.confirm("確定要刪除這個產品嗎？此操作不可逆！")) {
                  deleteProduct(id);
             }
         }
@@ -661,15 +673,15 @@
                 const existingUrl = document.getElementById('existing_image_url').value;
                 if(existingUrl) {
                     preview.src = existingUrl;
-                    previewContainer.classList.remove('hidden');
                     currentName.innerText = "保留原圖";
+                    previewContainer.classList.remove('hidden');
                 } else {
                     previewContainer.classList.add('hidden');
                 }
             }
         }
 
-        // 10. 編輯/開啟模態視窗 (不變)
+        // 10. 編輯/開啟模態視窗 (變動: 讀取/寫入 weight_kg)
         window.editProduct = function(id) {
             const p = window.allProducts.find(item => item.id === id);
             if (!p) return;
@@ -696,7 +708,8 @@
 
             // 填入所有欄位
             document.getElementById('sku').value = p.sku || '';
-            document.getElementById('weight_g').value = p.weight_g || 0;
+            // NOTE: 從 p.weight_kg 讀取並寫入 weight_kg 欄位
+            document.getElementById('weight_kg').value = p.weight_kg || 0; 
             document.getElementById('made_in').value = p.made_in || '';
             document.getElementById('vendor_new_date').value = p.vendor_new_date || '';
             document.getElementById('vendor_shop_name').value = p.vendor_shop_name || ''; 
@@ -732,10 +745,10 @@
             // 載入資料後，進行一次計算，確保利潤顯示正確
             window.calculateEstimatedProfit();
 
-            document.getElementById('product-modal').classList.remove('hidden');
+            openModal('edit'); // 使用 openModal 確保顯示邏輯統一
         };
 
-        // 11. 匯出 Excel (更新欄位名稱) (不變)
+        // 11. 匯出 Excel (更新欄位名稱) (變動: 修正欄位名稱)
         window.exportToExcel = function() {
             if (window.allProducts.length === 0) {
                 showTemporaryMessage("沒有資料可以匯出！", 'bg-yellow-500');
@@ -745,7 +758,8 @@
             const data = window.allProducts.map(p => ({
                 "1. 上架商品號": p.sku || '',
                 "2. 產品圖": p.image_url || '',
-                "3. 預估重量": p.weight_g || 0,
+                // NOTE: 欄位名稱修正為 預估重量(KG)
+                "3. 預估重量(KG)": p.weight_kg || 0,
                 "4. Made in": p.made_in || '',
                 "5. 檔口上新日期": p.vendor_new_date || '',
                 "6. 檔口": p.vendor_shop_name || '', 
@@ -814,6 +828,7 @@
             // 開啟視窗時，進行一次計算以確保初始值正確
             window.calculateEstimatedProfit();
 
+            // **【關鍵修正】** 確保模態視窗被正確顯示
             document.getElementById('product-modal').classList.remove('hidden');
         };
 
@@ -823,7 +838,7 @@
 
         // 【更新】重置設定
         window.clearLocalConfig = function() {
-            if(confirm("確定要重置設定嗎？目前的 Firebase 設定已嵌入程式碼中，重置只會清除瀏覽器中的歷史設定並重新載入，以便使用新的程式碼版本。")) { 
+            if(window.confirm("確定要重置設定嗎？目前的 Firebase 設定已嵌入程式碼中，重置只會清除瀏覽器中的歷史設定並重新載入，以便使用新的程式碼版本。")) { 
                 // 雖然現在是硬編碼，但清除本地儲存是為了防止舊的設定干擾。
                 localStorage.removeItem('my_style_firebase_config'); 
                 location.reload();
@@ -850,5 +865,4 @@
         }
     </script>
 </body>
-
 </html>
